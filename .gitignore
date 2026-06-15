@@ -1,0 +1,17 @@
+# secrets -- NEVER commit
+.env
+.env.*
+!.env.example
+
+# local tracking (stats of who the judge picks)
+multillm_stats.json
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/

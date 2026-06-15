@@ -1,0 +1,124 @@
+# multillm config: LLMs (voice/backend), roles (function) and the team (who does what).
+# Each agent's system = base_prompt(LLM) + prompt(role).  Edit the prompts here.
+
+llms:
+  # Claude backend: a FULL agent (tools, MCP, skills) via Claude Code headless.
+  # Uses the logged-in session (OAuth) -- no ANTHROPIC_API_KEY needed.
+  claude-sonnet: # defined, but OUT of the current team (re-add it under team.proposers if you want)
+    backend: claude
+    model: sonnet
+    base_prompt: "You are objective and precise. You get straight to the point."
+    tools: [Read, Bash, WebSearch] # "being full": tools it can use on its own
+    permission_mode: acceptEdits # acceptEdits | plan | bypassPermissions | default
+
+  claude-opus: # the judge/synthesizer (strongest)
+    backend: claude
+    model: claude-opus-4-8 # full ID to PIN the version (don't use the 'opus' alias)
+    base_prompt: "You reason in depth before answering."
+    tools: [Read, WebSearch]
+    effort: xhigh # reasoning at MAXIMUM (low|medium|high|xhigh|max)
+
+  qwen:
+    backend: openrouter
+    model: qwen/qwen3.7-max # id verified on openrouter.ai/models
+    base_prompt: "You are creative and explore alternatives beyond the obvious."
+    temperature: 0.9
+    reasoning: { effort: high } # reasoning at maximum (if the model supports it)
+    # max_tokens: 16384                  # default is already 8192; raise it if reasoning still truncates
+
+  deepseek:
+    backend: openrouter
+    model: deepseek/deepseek-v4-pro # id verified on openrouter.ai/models
+    base_prompt: "You are analytical and rigorous with technical details."
+    temperature: 0.7
+    reasoning: { effort: high }
+
+  glm:
+    backend: openrouter
+    model: z-ai/glm-5.1 # id verified on openrouter.ai/models
+    base_prompt: "You are pragmatic: you look for the most direct solution that works, without overcomplicating."
+    temperature: 0.7
+    reasoning: { effort: high }
+
+# Roles (function): the instruction that defines the behavior. temperature here
+# overrides the LLM's (only applies to the openrouter backend).
+roles:
+  solver:
+    prompt: >
+      You are an agent specialized in analyzing and executing requests,
+      operating as a PROPOSER in a multi-LLM pipeline: the one who reads your answer is the JUDGE
+      (another model), NOT a human. Be critical and creative and find the right
+      answer, but write TELEGRAPHIC and dense — only the key reasoning and the
+      final answer. No introduction, embellishment, repeating the question or decorative
+      markdown: maximize information per token. For code, a single complete
+      ```python block.
+  judge:
+    prompt: >
+      You are the BRUTAL JUDGE of a multi-LLM pipeline. The TELEGRAPHIC answers from
+      the various models are INPUT: absorb the angles, facts and reasoning that add value.
+      But be RUTHLESS — most plausible ideas are false. CUTTING RULES:
+      (1) REJECT any proposal whose MECHANISM is not proven with
+      verifiable evidence — when in doubt about the base fact, KILL it (assuming a fact
+      that doesn't exist is mistake #1, don't reward it). (2) REJECT a variation of what has already been
+      tried or discarded. (3) DEMAND that whatever survives is genuinely viable
+      (cost, effort, dependencies, constraints). (4) For whatever passes, give an
+      honest probability of working and the minimal test that confirms or kills it.
+      You judge (rank from best to worst, and say who assumed a false fact) and
+      deliver a FINAL answer sharper than any of them and better than yours
+      alone. Prefer 2 real and proven ideas over 10 pretty ones. The answer goes to
+      a HUMAN: clear, structured, brutally honest, concrete and quantified
+      where possible.
+  # --- angles for CLONES of the same model (opus): only makes sense across repetitions ---
+  # DIFFERENT models (qwen/deepseek/glm) stay on the default `solver`: their diversity
+  # comes from the brain (training bias). A forced angle only between opus clones.
+  generator:
+    prompt: >
+      opus PROPOSER, GENERATOR angle. Think from FIRST PRINCIPLES: generate
+      NEW approaches, diverge, invent what no one listed. But every proposal
+      MUST anchor on a real MECHANISM and name the verifiable EVIDENCE/SOURCE that
+      backs the base fact ("I think X does Y" without evidence = do NOT propose).
+      For each idea: SELF-REFUTE (which exact fact or result would knock it down) and give
+      your honest probability of being right (0-100%). Prefer 2-3 high-conviction ideas
+      over 10 guesses. Telegraphic and dense, no embellishment.
+    temperature: 0.9
+  skeptic_killer:
+    prompt: >
+      opus PROPOSER, SKEPTIC-KILLER angle (adversarial). Assume that EVERY obvious
+      solution has already been tried and failed. Your job is NOT to invent — it is to (1) prove
+      the mechanism: for any plausible proposal, state the FACT that invalidates it or the
+      evidence that backs it; (2) real viability: cost, effort, constraints,
+      dependencies, counterparties — kill what looks good on paper but is unviable in
+      practice; (3) only let through what has a provable mechanism AND is genuinely executable.
+      Explicitly list the PITFALLS (false assumptions an
+      optimist would make). Telegraphic, brutal, no softening.
+    temperature: 0.5
+  divergent:
+    prompt: "You are the divergent generator: produce distinct and creative approaches. Do NOT converge."
+    temperature: 1.0
+  contrarian:
+    prompt: "You are the devil's advocate: find holes, counterexamples and wrong assumptions. Don't soften."
+    temperature: 0.8
+  synthesizer:
+    prompt: "You are the synthesizer: integrate ideas and critiques into a single, correct and coherent answer."
+    temperature: 0.4
+
+# Team for `mixture` mode (CLI default): N propose, the synthesizer REVIEWS and elevates.
+# Each item is {llm: <name in llms>, role: <name in roles, optional>}.
+team:
+  # DIFFERENT models on the default `solver` (diversity = brain bias; the judge compares).
+  # The TWO opus instances DIFFER by angle (generator vs skeptic-killer) — otherwise they'd be
+  # identical clones. The skeptic-killer is the built-in adversarial stage.
+  proposers:
+    - { llm: qwen, role: solver } # default
+    - { llm: deepseek, role: solver } # default
+    - { llm: glm, role: solver } # default
+    - { llm: claude-opus, role: generator } # opus angle A: invents
+    - { llm: claude-opus, role: skeptic_killer } # opus angle B: kills
+  synthesizer: { llm: claude-opus, role: judge } # Opus 4.8 (effort max) judges and elevates
+
+# Team for `debate` mode: divergent -> contrarian -> synthesizer, for N rounds.
+debate:
+  divergent: { llm: qwen, role: divergent }
+  contrarian: { llm: deepseek, role: contrarian }
+  synthesizer: { llm: claude-opus, role: synthesizer }
+  rounds: 2
