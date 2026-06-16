@@ -5,6 +5,13 @@
   python -m multillm "your question" --mode debate  # debate: divergent -> contrarian -> synthesizer
   python -m multillm --show-stats                   # tracking: who the judge picks most
   echo "your question" | python -m multillm         # also reads from stdin
+  python -m multillm < prompt.txt                   # big prompt: read the whole file from stdin
+
+Ad-hoc proposers (ignore the yaml `team`, bench OpenRouter ids by comma) -- the
+judge stays the yaml synthesizer unless you pass --judge:
+
+  python -m multillm "q" -m qwen/qwen3-max,deepseek/deepseek-r1,z-ai/glm-5.1
+  python -m multillm "q" -m "qwen/qwen3-max@generator,deepseek/deepseek-r1"  # role via @
 
 The FINAL answer goes to stdout; candidates, ranking, cost and tracking go to stderr
 (so you can redirect just the answer: `python -m multillm "x" > out.txt`). It calls the
@@ -17,15 +24,51 @@ import asyncio
 import sys
 from pathlib import Path
 
-from .config import load_config
+from .agent import build_agent
+from .config import Config, LLMSpec, load_config
 from .costs import format_cost_report
 from .env import load_env
 from .mixture import MixtureResult, mixture
 from .roles import debate
-from .team import agent_from_ref, build_team
+from .team import Team, agent_from_ref, build_team
 from .tracking import format_stats, record_result
 
 DEFAULT_CFG = str(Path(__file__).resolve().parent.parent / "agents.yaml")
+
+
+def _split_spec(spec_str: str, default_role: str) -> tuple[str, str]:
+    """'model[@role]' -> (model_id, role_name).
+
+    The role separator is '@', not ':', so OpenRouter variant ids like
+    'deepseek/deepseek-r1:free' or '…:nitro' stay intact. Empty role -> default.
+    """
+    model_id, _, role = spec_str.partition("@")
+    return model_id.strip(), (role.strip() or default_role)
+
+
+def _adhoc_agent(cfg: Config, spec_str: str, default_role: str, effort: str):
+    """Builds an OpenRouter agent straight from a CLI 'id[@role]' (no yaml `llms` entry).
+
+    The model id is used as-is; the role prompt still comes from the yaml `roles`
+    block (so the brainstorm prompts stay DRY). Reasoning effort is applied.
+    An unknown role raises KeyError (handled in main as a clean error).
+    """
+    model_id, role_name = _split_spec(spec_str, default_role)
+    llm = LLMSpec(name=model_id, backend="openrouter", model=model_id,
+                  options={"reasoning": effort})
+    return build_agent(llm, cfg.role(role_name))
+
+
+def _adhoc_team(cfg: Config, args) -> Team:
+    """Team from --models (ignores the yaml `team`); judge = --judge or yaml synthesizer."""
+    proposers = [_adhoc_agent(cfg, s, args.role, args.effort)
+                 for s in args.models.split(",") if s.strip()]
+    if args.judge:
+        synth = _adhoc_agent(cfg, args.judge, "judge", args.effort)
+    else:
+        ref = (cfg.raw.get("team") or {}).get("synthesizer")
+        synth = agent_from_ref(cfg, ref) if ref else None
+    return Team(proposers=proposers, synthesizer=synth)
 
 
 _W = 72
@@ -69,11 +112,14 @@ async def _run(args, question: str) -> None:
     cfg = load_config(args.config)
 
     if args.mode == "mixture":
-        team = build_team(cfg)
+        team = _adhoc_team(cfg, args) if args.models else build_team(cfg)
+        if not team.proposers:
+            raise SystemExit("mixture mode needs proposers (yaml team block or --models)")
         if team.synthesizer is None:
-            raise SystemExit("mixture mode requires a 'synthesizer' in the yaml team block")
+            raise SystemExit("mixture mode needs a judge ('synthesizer' in the yaml team or --judge)")
+        src = "--models" if args.models else "team block"
         props = ", ".join(p.name for p in team.proposers)
-        print(f"▶ MIXTURE mode (team block) · proposers: {props} → judge: {team.synthesizer.name}",
+        print(f"▶ MIXTURE mode ({src}) · proposers: {props} → judge: {team.synthesizer.name}",
               file=sys.stderr, flush=True)
 
         def _prog(done, total, c):
@@ -82,7 +128,7 @@ async def _run(args, question: str) -> None:
             print(f"  {mark} {done}/{total} · {c.agent}{extra}", file=sys.stderr, flush=True)
 
         def _judging():
-            print(f"  ⚖ {team.synthesizer.name} evaluating (effort max)…", file=sys.stderr, flush=True)
+            print(f"  ⚖ {team.synthesizer.name} evaluating…", file=sys.stderr, flush=True)
 
         result = await mixture(question, team.proposers, team.synthesizer,
                                on_proposer=_prog, on_judge=_judging)
@@ -123,6 +169,16 @@ def main() -> None:
     ap.add_argument("--config", default=DEFAULT_CFG, help="path to agents.yaml")
     ap.add_argument("--mode", choices=["mixture", "debate"], default="mixture",
                     help="mixture (proposers + judge, default) or debate")
+    ap.add_argument("-m", "--models", default="",
+                    help="comma-separated OpenRouter ids as ad-hoc proposers (ignores the yaml "
+                         "team); per-model role via 'id@role', else --role. e.g. "
+                         "'qwen/qwen3-max,deepseek/deepseek-r1@generator'")
+    ap.add_argument("--role", default="solver",
+                    help="default role for --models entries without '@role' (default: solver)")
+    ap.add_argument("--judge", default="",
+                    help="ad-hoc judge 'id[@role]' for --models runs (default: the yaml synthesizer)")
+    ap.add_argument("--effort", default="high",
+                    help="reasoning effort for --models / --judge agents (default: high)")
     ap.add_argument("--show-all", action="store_true",
                     help="show each proposer's answer (and reasoning) on stderr")
     ap.add_argument("--stats-file", default="multillm_stats.json", help="tracking file")
@@ -140,7 +196,7 @@ def main() -> None:
         ap.error("missing question (pass it as an argument or via stdin)")
     try:
         asyncio.run(_run(args, question))
-    except RuntimeError as e:  # includes BackendError; show it cleanly instead of a traceback
+    except (RuntimeError, KeyError) as e:  # BackendError(RuntimeError) + unknown role/llm (KeyError)
         print(f"\n✖ committee failed: {e}", file=sys.stderr)
         raise SystemExit(1)
 

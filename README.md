@@ -90,7 +90,24 @@ python -m multillm "your question"               # mixture (default)
 python -m multillm "your question" --show-all    # also dump each proposer + reasoning
 python -m multillm "your question" --mode debate # sequential debate
 echo "your question" | python -m multillm        # or pipe via stdin
+python -m multillm < prompt.txt                  # big prompt: read the whole file from stdin
 ```
+
+### Bench models ad-hoc (skip `agents.yaml`)
+
+Pass OpenRouter ids by comma to use them as proposers **without editing the yaml** —
+handy to find which models are worth keeping. The judge stays the yaml synthesizer
+(so the ranking is consistent), and every run feeds the per-model tracking below.
+
+```bash
+python -m multillm "q" -m qwen/qwen3-max,deepseek/deepseek-r1,z-ai/glm-5.1
+python -m multillm "q" -m "qwen/qwen3-max@generator,deepseek/deepseek-r1"   # per-model role via @
+python -m multillm "q" -m qwen/qwen3-max,deepseek/deepseek-r1 --judge x-ai/grok-4  # ad-hoc judge too
+```
+
+The role separator is `@` (not `:`) so variant ids like `deepseek/deepseek-r1:free`
+stay intact. `--role` sets the default role (else `solver`); `--effort` the reasoning
+effort. Roles/prompts still come from the yaml `roles` block.
 
 ## Use it from Claude Code (a skill)
 
