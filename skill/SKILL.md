@@ -29,12 +29,29 @@ python -m multillm "<QUESTION>"               # mixture (default)
 python -m multillm "<QUESTION>" --show-all    # also dump each proposer + reasoning
 python -m multillm "<QUESTION>" --mode debate # sequential debate
 python -m multillm --show-stats               # leaderboard, no question
+python -m multillm < prompt.txt               # big prompt: read it from stdin (no ARG_MAX limit)
 ```
 
 Need a specific interpreter (conda/venv)? Use it — e.g. `conda run -n <env> python -m
 multillm ...`. To avoid retyping that prefix, you may cache it once in a tiny wrapper
 at `~/.config/multillm/run` (`#!/usr/bin/env bash` + `conda run -n <env> python -m
 multillm "$@"`) and call `~/.config/multillm/run "<QUESTION>"` thereafter.
+
+## Benchmark models ad-hoc (skip agents.yaml)
+
+Pass OpenRouter ids by comma to use them as proposers **without editing `agents.yaml`**
+— handy to compare models. The judge stays the yaml synthesizer (consistent ranking)
+and every run feeds the `--show-stats` leaderboard:
+
+```bash
+python -m multillm "<QUESTION>" -m qwen/qwen3-max,deepseek/deepseek-r1,z-ai/glm-5.1
+python -m multillm "<QUESTION>" -m "qwen/qwen3-max@generator,deepseek/deepseek-r1"  # per-model role via @
+python -m multillm "<QUESTION>" -m qwen/qwen3-max,deepseek/deepseek-r1 --judge x-ai/grok-4
+```
+
+The role separator is `@` (not `:`) so variant ids like `deepseek/deepseek-r1:free`
+stay intact. `--role` sets the default role (else `solver`); `--effort` the reasoning
+effort. Roles/prompts still come from the yaml `roles` block.
 
 ## Output (important)
 
