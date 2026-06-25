@@ -22,10 +22,15 @@ If you keep it in a specific env (conda/venv), install/run with that env's pytho
 
 ## How to run
 
-Once installed, run from any directory; pass the question in quotes (escape inner quotes):
+Once installed, run from any directory; pass the question in quotes (escape inner quotes).
+
+**Default — and what you should almost always use: just pass the question.** With no model
+flags, it runs the **curated team configured in `agents.yaml`** (the proposers + judge already
+tuned there). This is the preferred path. The ad-hoc `-m` mode (below) is a secondary tool only
+for benchmarking specific models — not for normal use.
 
 ```bash
-python -m multillm "<QUESTION>"               # mixture (default)
+python -m multillm "<QUESTION>"               # DEFAULT: the team from agents.yaml (use this)
 python -m multillm "<QUESTION>" --show-all    # also dump each proposer + reasoning
 python -m multillm "<QUESTION>" --mode debate # sequential debate
 python -m multillm --show-stats               # leaderboard, no question
@@ -37,11 +42,14 @@ multillm ...`. To avoid retyping that prefix, you may cache it once in a tiny wr
 at `~/.config/multillm/run` (`#!/usr/bin/env bash` + `conda run -n <env> python -m
 multillm "$@"`) and call `~/.config/multillm/run "<QUESTION>"` thereafter.
 
-## Benchmark models ad-hoc (skip agents.yaml)
+## Benchmark models ad-hoc (secondary — skip agents.yaml)
 
-Pass OpenRouter ids by comma to use them as proposers **without editing `agents.yaml`**
-— handy to compare models. The judge stays the yaml synthesizer (consistent ranking)
-and every run feeds the `--show-stats` leaderboard:
+> Only when you specifically want to **compare models**. For normal use, prefer the default
+> above (the curated `agents.yaml` team).
+
+Pass OpenRouter ids by comma to use them as proposers **without editing `agents.yaml`**.
+The judge stays the yaml synthesizer (consistent ranking) and every run feeds the
+`--show-stats` leaderboard:
 
 ```bash
 python -m multillm "<QUESTION>" -m qwen/qwen3-max,deepseek/deepseek-r1,z-ai/glm-5.1
