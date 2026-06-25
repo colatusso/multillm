@@ -50,12 +50,14 @@ def _adhoc_agent(cfg: Config, spec_str: str, default_role: str, effort: str):
     """Builds an OpenRouter agent straight from a CLI 'id[@role]' (no yaml `llms` entry).
 
     The model id is used as-is; the role prompt still comes from the yaml `roles`
-    block (so the brainstorm prompts stay DRY). Reasoning effort is applied.
+    block (so the brainstorm prompts stay DRY). Reasoning effort is applied, and the
+    cheapest provider is preferred ({"sort": "price"}) so benchmarks aren't overpriced
+    by random provider routing.
     An unknown role raises KeyError (handled in main as a clean error).
     """
     model_id, role_name = _split_spec(spec_str, default_role)
     llm = LLMSpec(name=model_id, backend="openrouter", model=model_id,
-                  options={"reasoning": effort})
+                  options={"reasoning": effort, "provider": {"sort": "price"}})
     return build_agent(llm, cfg.role(role_name))
 
 

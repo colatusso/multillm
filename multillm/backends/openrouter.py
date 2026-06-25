@@ -18,6 +18,9 @@ class OpenRouterBackend(Backend):
     - Reasoning: if `reasoning` is set (e.g. {"effort": "high"}), it goes in the body and
       the returned `message.reasoning` is captured. Models without support ignore it.
       Note: reasoning consumes tokens -- you may need a larger `max_tokens`.
+    - Provider routing: `provider` (e.g. {"sort": "price"}) goes in the body. A model can be
+      served by many providers at very different prices (often 2-4x); {"sort": "price"} keeps
+      the cheapest available (with fallback). This dominates cost far more than reasoning level.
     """
 
     def __init__(
@@ -29,6 +32,7 @@ class OpenRouterBackend(Backend):
         default_temperature: float = 0.7,
         max_tokens: int = 32000,  # high: reasoning (effort high) + long response must not overflow -> empty content
         reasoning: dict | None = None,
+        provider: dict | None = None,
     ):
         if not api_key:
             raise BackendError("OpenRouter: empty api_key (set OPENROUTER_API_KEY)")
@@ -36,6 +40,7 @@ class OpenRouterBackend(Backend):
         self.default_temperature = default_temperature
         self.max_tokens = max_tokens
         self.reasoning = reasoning
+        self.provider = provider  # OpenRouter provider routing, e.g. {"sort": "price"} for the cheapest
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
     @classmethod
@@ -51,6 +56,7 @@ class OpenRouterBackend(Backend):
             default_temperature=spec.temperature if spec.temperature is not None else 0.7,
             max_tokens=o.get("max_tokens", 32000),
             reasoning=reasoning,
+            provider=o.get("provider"),
         )
 
     @staticmethod
@@ -79,6 +85,8 @@ class OpenRouterBackend(Backend):
         extra_body = {"usage": {"include": True}}
         if self.reasoning:
             extra_body["reasoning"] = self.reasoning
+        if self.provider:
+            extra_body["provider"] = self.provider
         try:
             r = await self._client.chat.completions.create(
                 model=self.model,

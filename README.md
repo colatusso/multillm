@@ -194,6 +194,12 @@ billed to your subscription, not the paid API. Reasoning maxes via `effort` (cla
 or `reasoning: {effort: high}` (openrouter); `message.reasoning` is captured and
 shown under `--show-all`.
 
+**Cheapest provider (openrouter):** the same model is served by many providers at
+**2–4× different prices**, and default routing may pick an expensive one. Add
+`provider: {sort: price}` to an LLM in `agents.yaml` to always use the cheapest
+available (with fallback) — in practice **33–56% cheaper**, far more than any
+reasoning-level tweak. The ad-hoc `-m/--models` path applies this automatically.
+
 ## Python API
 
 ```python

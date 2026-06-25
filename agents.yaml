@@ -24,6 +24,7 @@ llms:
     base_prompt: "You are creative and explore alternatives beyond the obvious."
     temperature: 0.9
     reasoning: { effort: high } # reasoning at maximum (if the model supports it)
+    provider: { sort: price } # keep the CHEAPEST provider (2-4x price spread across providers)
     # max_tokens: 16384                  # default is already 8192; raise it if reasoning still truncates
 
   deepseek:
@@ -32,6 +33,7 @@ llms:
     base_prompt: "You are analytical and rigorous with technical details."
     temperature: 0.7
     reasoning: { effort: high }
+    provider: { sort: price } # keep the CHEAPEST provider (2-4x price spread across providers)
 
   glm:
     backend: openrouter
@@ -39,6 +41,7 @@ llms:
     base_prompt: "You are pragmatic: you look for the most direct solution that works, without overcomplicating."
     temperature: 0.7
     reasoning: { effort: high }
+    provider: { sort: price } # keep the CHEAPEST provider (2-4x price spread across providers)
 
 # Roles (function): the instruction that defines the behavior. temperature here
 # overrides the LLM's (only applies to the openrouter backend).
