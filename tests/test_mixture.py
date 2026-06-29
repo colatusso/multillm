@@ -20,6 +20,17 @@ async def test_judge_json_ranking_obs_and_answer(Fake):
     assert result.winner().agent == "b"
 
 
+async def test_judge_prompt_is_blind_no_model_label(Fake):
+    # the judge must NOT see which model wrote each answer -- avoids self-preference /
+    # label bias. Attribution is positional via `cands`, so the listing carries only [index].
+    proposers = [Agent("a", Fake(reply="resp A"), "s"), Agent("b", Fake(reply="resp B"), "s")]
+    synth = Agent("opus", Fake(reply='{"ranking":[0,1],"observations":"","answer":"f"}'), "s")
+    await mixture("q", proposers, synth)
+    u = synth.backend.calls[0]["user"]
+    assert "(model:" not in u                 # no model name/label leaked to the judge
+    assert "[0]" in u and "[1]" in u          # blind listing is keyed by index only
+
+
 async def test_invalid_json_falls_back_to_text(Fake):
     proposers = [Agent("a", Fake(reply="x"), "s")]
     synth = Agent("opus", Fake(reply="isso nao e json"), "s")

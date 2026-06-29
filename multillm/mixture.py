@@ -120,7 +120,11 @@ async def mixture(query: str, proposers: Sequence[Agent], synthesizer: Agent,
 
     if on_judge is not None:
         on_judge()
-    listing = "\n\n".join(f"[{i}] (model: {c.model})\n{c.text}" for i, c in enumerate(cands))
+    # BLIND judging: the judge sees only the index, NEVER the model name -- this
+    # avoids self-preference / label bias (an LLM judge favoring its own family).
+    # index -> model is remapped deterministically afterwards from `cands` order
+    # (ranking, tracking and the cost report all read the model from there).
+    listing = "\n\n".join(f"[{i}]\n{c.text}" for i, c in enumerate(cands))
     raw = await synthesizer.run(_SYNTH_USER.format(query=query, n=len(cands), listing=listing))
     ranking, observations, final = _parse_judge(raw, len(cands))
     return MixtureResult(final=final, ranking=ranking, observations=observations,
